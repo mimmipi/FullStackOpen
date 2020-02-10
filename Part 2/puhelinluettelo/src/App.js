@@ -1,97 +1,125 @@
 import React, { useState, useEffect } from 'react'
-import axios from 'axios'
-import personsService from './services/persons'
+import Persons from './components/Persons'
+import PersonForm from './components/PersonForm'
+import Notification from './components/Notification'
+import Filter from './components/Filter'
+import personService from './services/persons'
 
-const App = (props) => {
+const App = () => {
   const [persons, setPersons] = useState([])
-  /*
-    { name: 'Arto Hellas', number: '040 111 2222' },
-    { name: 'Ada Lovelace', number: '39-44-5323523' },
-    { name: 'Dan Abramov', number: '12-43-234345' },
-    { name: 'Mary Poppendieck', number: '39-23-6423122' }
-  ]) */
-
-  const [newName, setNewName] = useState('')
-  const [newNumber, setNewNumber] = useState('')
-  const [filterCondition, setFilter] = useState('')
+  const [ newName, setNewName ] = useState('')
+  const [ newNumber, setNewNumber ] = useState('')
+  const [ filterString, setStringFilter ] = useState('')
+  const [ notification, setNotification ] = useState(null)
 
   useEffect(() => {
-    personsService
+    personService
       .getAll()
-      .then(response => {
-        setPersons(response.data)
+      .then((data) => {
+        setPersons(data)
       })
+
   }, [])
 
-
-
-  const addNew = (event) => {
-    event.preventDefault()
-    const newObject = {
-      name: newName,
-      number: newNumber
-    }
-    if (false) {
-      window.alert(`${newObject.name} is already in the phonebook`)
-    } else {
-      setPersons(persons.concat(newObject))
-    }
-    setNewName('')
-    setNewNumber('')
-  
-
-  personsService
-  .create(newObject)
-  .then(response => {
-    console.log(response)
-  })
+  const notifyWith = (message, type='success') => {
+    setNotification({ message, type })
+    setTimeout(() => {
+      setNotification(null)
+    }, 5000)
   }
 
   const handleNameChange = (event) => {
-    console.log(event.target.value)
     setNewName(event.target.value)
-  }
-
+  }  
+  
   const handleNumberChange = (event) => {
     setNewNumber(event.target.value)
+  }  
+
+  const handleFilterStringChange = (event) => {
+    setStringFilter(event.target.value)
+  } 
+
+  const deletePerson = (id) => {
+    const toDelete = persons.find(p => p.id === id)
+    const ok = window.confirm(`Delete ${toDelete.name}`)
+    if (ok) {
+      personService.remove(id)
+        .then(response => {
+          setPersons(persons.filter(p => p.id !== id))
+          notifyWith(`Deleted ${toDelete.name}`)
+        }).catch(() => {
+          setPersons(persons.filter(p => p.id !== id))
+          notifyWith(`${toDelete.name} had already been removed`, 'error')
+        })
+    }
   }
 
-  const handleFilterChange = (event) => {
-    setFilter(event.target.value)
-    //tänne filtteri personseille
+  const addPerson = (event) => {
+    event.preventDefault()
+
+    const existing = persons.find(p => p.name === newName)
+    if (existing) {
+      const ok = window.confirm(`${existing.name} already in phonebook, replace the old number with new one?`)
+      if (ok) {
+        personService.update(existing.id, {
+          name: existing.name,
+          number:newNumber
+        }).then(retunedPerson => {
+          setPersons(persons.map(person => person.id !== existing.id ? person : retunedPerson))
+          notifyWith(`Changed number of  ${existing.name}`)
+          setNewName('')
+          setNewNumber('')
+        })
+      }
+
+    } else {
+      personService.create({
+        name: newName,
+        number: newNumber   
+      }).then(addedPerson => {
+        setPersons(persons.concat(addedPerson))
+        notifyWith(`Added ${newName}`)
+        setNewName('')
+        setNewNumber('')
+      }).catch(error => {
+        // pääset käsiksi palvelimen palauttamaan virheilmoitusolioon näin
+        console.log(error.response.data.error)
+        notifyWith(`${error.response.data.error} `, 'error')
+      })
+    }
   }
+
+  const personsToShow = filterString.length === 0 ?
+    persons : 
+    persons.filter(p => p.name.toLowerCase().indexOf(filterString.toLowerCase()) > 0 )
 
   return (
     <div>
       <h2>Phonebook</h2>
-      <div>
-        <input value={filterCondition}
-          onChange={handleFilterChange}
-        />
-      </div>
-      <form onSubmit={addNew}>
-        <div>
-          name: <input value={newName}
-            onChange={handleNameChange}
-          />
-        </div>
-        <div>
-          number: <input value={newNumber}
-            onChange={handleNumberChange}
-          />
-        </div>
-        <div>
-          <button type="submit">add</button>
-        </div>
-      </form>
-      <h2>Numbers</h2>
-      <ul>
-      {persons.map((person) =>
-          <li key={person.name}> {person.name} {person.number}</li>
-        )}
-      </ul>
+
+      <Notification notification={notification} />
+
+      filter shown with: 
+      <Filter
+        value={filterString}
+        onChange={handleFilterStringChange}
+      />
+
+      <h3>add a new</h3>
+      <PersonForm 
+        handleNameChange={handleNameChange}
+        handleNumberChange={handleNumberChange}
+        newNumber={newNumber}
+        newName={newName}
+        addPerson={addPerson}
+      />
+     
+      <h3>Numbers</h3>
+      <Persons persons={personsToShow} deletePerson={deletePerson}/>
     </div>
   )
+
 }
 
 export default App
